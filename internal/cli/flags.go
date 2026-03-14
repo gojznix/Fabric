@@ -106,7 +106,7 @@ type Flags struct {
 	NotificationCommand             string               `long:"notification-command" yaml:"notificationCommand" description:"Custom command to run for notifications (overrides built-in notifications)"`
 	Thinking                        domain.ThinkingLevel `long:"thinking" yaml:"thinking" description:"Set reasoning/thinking level (e.g., off, low, medium, high, or numeric tokens for Anthropic or Google Gemini)"`
 	ShowMetadata                    bool                 `long:"show-metadata" description:"Print metadata to stderr"`
-	Debug                           int                  `long:"debug" description:"Set debug level (0=off, 1=basic, 2=detailed, 3=trace)" default:"0"`
+	Debug                           int                  `long:"debug" description:"Set debug level (0=off, 1=basic, 2=detailed, 3=trace, 4=wire)" default:"0"`
 }
 
 // Init Initialize flags. returns a Flags struct and an error
@@ -161,6 +161,16 @@ func Init() (ret *Flags, err error) {
 		}
 		return
 	}
+
+	if ret.Pattern == "" {
+		execName := filepath.Base(os.Args[0])
+		execName = strings.TrimSuffix(execName, filepath.Ext(execName))
+		if execName != "fabric" && execName != "main" && execName != "cmd" && execName != "" {
+			ret.Pattern = execName
+			usedFlags["pattern"] = true
+		}
+	}
+
 	debuglog.SetLevel(debuglog.LevelFromInt(ret.Debug))
 
 	// Check to see if a ~/.config/fabric/config.yaml config file exists (only when user didn't specify a config)
@@ -363,7 +373,7 @@ func validateImageParameters(imagePath, size, quality, background string, compre
 	if imagePath == "" {
 		// Check if any image parameters are specified without --image-file
 		if size != "" || quality != "" || background != "" || compression != 0 {
-			return fmt.Errorf("%s", i18n.T("image_parameters_require_image_file"))
+			return errors.New(i18n.T("image_parameters_require_image_file"))
 		}
 		return nil
 	}

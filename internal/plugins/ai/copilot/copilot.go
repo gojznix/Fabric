@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/danielmiessler/fabric/internal/chat"
 	"github.com/danielmiessler/fabric/internal/domain"
+	"github.com/danielmiessler/fabric/internal/i18n"
 	debuglog "github.com/danielmiessler/fabric/internal/log"
 	"github.com/danielmiessler/fabric/internal/plugins"
 	"golang.org/x/oauth2"
@@ -106,7 +108,7 @@ type Client struct {
 // configure initializes the client with OAuth2 configuration.
 func (c *Client) configure() error {
 	if c.TenantID.Value == "" || c.ClientID.Value == "" {
-		return fmt.Errorf("tenant ID and client ID are required")
+		return errors.New(i18n.T("copilot_tenant_client_id_required"))
 	}
 
 	// Build OAuth2 configuration
@@ -168,7 +170,7 @@ func (c *Client) Send(ctx context.Context, msgs []*chat.ChatCompletionMessage, o
 	// Create a conversation
 	conversationID, err := c.createConversation(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to create conversation: %w", err)
+		return "", fmt.Errorf(i18n.T("copilot_failed_create_conversation"), err)
 	}
 
 	// Build the message content from chat messages
@@ -177,7 +179,7 @@ func (c *Client) Send(ctx context.Context, msgs []*chat.ChatCompletionMessage, o
 	// Send the chat message
 	response, err := c.sendChatMessage(ctx, conversationID, messageText)
 	if err != nil {
-		return "", fmt.Errorf("failed to send message: %w", err)
+		return "", fmt.Errorf(i18n.T("copilot_failed_send_message"), err)
 	}
 
 	return response, nil
@@ -192,7 +194,7 @@ func (c *Client) SendStream(msgs []*chat.ChatCompletionMessage, opts *domain.Cha
 	// Create a conversation
 	conversationID, err := c.createConversation(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create conversation: %w", err)
+		return fmt.Errorf(i18n.T("copilot_failed_create_conversation"), err)
 	}
 
 	// Build the message content from chat messages
@@ -200,15 +202,10 @@ func (c *Client) SendStream(msgs []*chat.ChatCompletionMessage, opts *domain.Cha
 
 	// Send the streaming chat message
 	if err := c.sendChatMessageStream(ctx, conversationID, messageText, channel); err != nil {
-		return fmt.Errorf("failed to stream message: %w", err)
+		return fmt.Errorf(i18n.T("copilot_failed_stream_message"), err)
 	}
 
 	return nil
-}
-
-// NeedsRawMode returns whether the model needs raw mode.
-func (c *Client) NeedsRawMode(modelName string) bool {
-	return false
 }
 
 // buildMessageText combines chat messages into a single prompt for Copilot.
@@ -253,7 +250,7 @@ func (c *Client) createConversation(ctx context.Context) (string, error) {
 
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("failed to create conversation: %s - %s", resp.Status, string(body))
+		return "", fmt.Errorf(i18n.T("copilot_error_create_conversation"), resp.Status, string(body))
 	}
 
 	var result conversationResponse
@@ -261,7 +258,7 @@ func (c *Client) createConversation(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	debuglog.Debug(debuglog.Detailed, "Created Copilot conversation: %s\n", result.ID)
+	debuglog.Debug(debuglog.Detailed, i18n.T("copilot_debug_created_conversation")+"\n", result.ID)
 	return result.ID, nil
 }
 
@@ -299,7 +296,7 @@ func (c *Client) sendChatMessage(ctx context.Context, conversationID, messageTex
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("chat request failed: %s - %s", resp.Status, string(body))
+		return "", fmt.Errorf(i18n.T("copilot_error_chat_request"), resp.Status, string(body))
 	}
 
 	var result conversationResponse
@@ -346,7 +343,7 @@ func (c *Client) sendChatMessageStream(ctx context.Context, conversationID, mess
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("stream request failed: %s - %s", resp.Status, string(body))
+		return fmt.Errorf(i18n.T("copilot_error_stream_request"), resp.Status, string(body))
 	}
 
 	// Parse SSE stream
@@ -373,7 +370,7 @@ func (c *Client) parseSSEStream(reader io.Reader, channel chan domain.StreamUpda
 
 		var event conversationResponse
 		if err := json.Unmarshal([]byte(jsonData), &event); err != nil {
-			debuglog.Debug(debuglog.Detailed, "Failed to parse SSE event: %v\n", err)
+			debuglog.Debug(debuglog.Detailed, i18n.T("copilot_debug_failed_parse_sse_event")+"\n", err)
 			continue
 		}
 
@@ -394,7 +391,7 @@ func (c *Client) parseSSEStream(reader io.Reader, channel chan domain.StreamUpda
 	}
 
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading stream: %w", err)
+		return fmt.Errorf(i18n.T("copilot_error_reading_stream"), err)
 	}
 
 	channel <- domain.StreamUpdate{Type: domain.StreamTypeContent, Content: "\n"}
